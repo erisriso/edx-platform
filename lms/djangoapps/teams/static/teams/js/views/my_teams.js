@@ -25,13 +25,9 @@
                     return this;
                 },
 
-                getTopicType: function(topicId) {
-                    var deferred = $.Deferred();
-                    this.getTopic(topicId).done(function(topic) {
-                        deferred.resolve(topic.get('type'));
-                    });
-                    return deferred.promise();
-                },
+                // getTopic: function(topicId) {
+                //     return this.getTopic(topicId);
+                // },
 
                 createHeaderView: function() {
                     // Never show a pagination header for the "My Team" tab

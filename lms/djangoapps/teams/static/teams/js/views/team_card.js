@@ -34,7 +34,7 @@
             className: 'team-members',
 
             initialize: function(options) {
-                this.getTopicType = options.getTopicType;
+                this.getTopic = options.getTopic;
                 this.topicId = options.topicId;
                 this.maxTeamSize = options.maxTeamSize;
                 this.memberships = options.memberships;
@@ -42,8 +42,8 @@
 
             render: function() {
                 var view = this;
-                this.getTopicType(this.topicId).done(function(topicType) {
-                    view.renderMessage(topicType !== 'open');
+                this.getTopic(this.topicId).done(function(topic) {
+                    view.renderMessage(topic.get('type') !== 'open');
                 }).fail(function() {
                     view.renderMessage(false);
                 });
@@ -129,7 +129,7 @@
                         memberships: this.model.get('membership'),
                         maxTeamSize: this.maxTeamSize,
                         topicId: this.model.get('topic_id'),
-                        getTopicType: this.getTopicType
+                        getTopic: this.getTopic
                     }),
                     new TeamCountryLanguageView({
                         model: this.model,
@@ -160,11 +160,11 @@
                 return '#teams/' + this.model.get('topic_id') + '/' + this.model.get('id');
             },
             // eslint-disable-next-line no-unused-vars
-            getTopicType: function(topicId) {
+            getTopic: function(topicId) {
                 // This function will be overrwritten in the extended class in TeamsView
                 // That will in turn be overwritten by functions in TopicTeamsView and MyTeamsView
                 var deferred = $.Deferred();
-                deferred.resolve('open');
+                deferred.resolve({type: 'open'});
                 return deferred.promise();
             }
         });
