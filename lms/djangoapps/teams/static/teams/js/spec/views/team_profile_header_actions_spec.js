@@ -29,7 +29,7 @@ define([
             function(requests, maxTeamSize, currentUsername, teamModelData, showEditButton, isInstructorManagedTopic) {
                 var model = new TeamModel(teamModelData, {parse: true}),
                     context = TeamSpecHelpers.createMockContext({
-                        maxTeamSize: maxTeamSize,
+                        courseMaxTeamSize: maxTeamSize,
                         userInfo: TeamSpecHelpers.createMockUserInfo({
                             username: currentUsername
                         })

@@ -36,7 +36,7 @@
                         message,
                         showJoinButton,
                         teamHasSpace;
-                    this.getUserTeamInfo(username, this.context.maxTeamSize).done(function(info) {
+                    this.getUserTeamInfo(username, this.context.courseMaxTeamSize).done(function(info) {
                         teamHasSpace = info.teamHasSpace;
 
                         // if user is the member of current team then we wouldn't show anything
@@ -87,7 +87,7 @@
                     });
                 },
 
-                getUserTeamInfo: function(username, maxTeamSize) {
+                getUserTeamInfo: function(username, courseMaxTeamSize) {
                     var deferred = $.Deferred();
                     var info = {
                         alreadyMember: false,
@@ -96,7 +96,7 @@
                         isAdminOrStaff: false,
                         isInstructorManagedTopic: false
                     };
-                    var teamHasSpace = this.model.get('membership').length < maxTeamSize;
+                    var teamHasSpace = this.model.get('membership').length < this.topic.getMaxTeamSize(courseMaxTeamSize);
 
                     info.memberOfCurrentTeam = TeamUtils.isUserMemberOfTeam(this.model.get('membership'), username);
                     info.isAdminOrStaff = this.context.userInfo.privileged || this.context.userInfo.staff;

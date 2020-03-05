@@ -22,7 +22,7 @@ define(['jquery',
                         membership: []
                     }),
                     TeamCardClass = TeamCardView.extend({
-                        maxTeamSize: '100',
+                        courseMaxTeamSize: '100',
                         srInfo: {
                             id: 'test-sr-id',
                             text: 'Screenreader text'

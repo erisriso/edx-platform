@@ -10,7 +10,8 @@
                 description: '',
                 team_count: 0,
                 id: '',
-                type: 'open'
+                type: 'open',
+                max_team_size: 0
             },
 
             initialize: function(options) {
@@ -20,6 +21,15 @@
             isInstructorManaged: function() {
                 var topicType = this.get('type');
                 return topicType === 'public_managed' || topicType === 'private_managed';
+            },
+
+            getMaxTeamSize: function(courseMaxTeamSize) {
+                if (this.isInstructorManaged()) {
+                    return null;
+                }
+                var result = this.get('max_team_size') || courseMaxTeamSize;
+                console.log(result);
+                return result;
             }
         });
         return Topic;

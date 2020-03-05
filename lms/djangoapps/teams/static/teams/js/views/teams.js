@@ -22,7 +22,7 @@
                 this.context = options.context;
                 this.itemViewClass = TeamCardView.extend({
                     router: options.router,
-                    maxTeamSize: this.context.maxTeamSize,
+                    courseMaxTeamSize: this.context.courseMaxTeamSize,
                     srInfo: this.srInfo,
                     countries: TeamUtils.selectorOptionsArrayToHashWithBlank(this.context.countries),
                     languages: TeamUtils.selectorOptionsArrayToHashWithBlank(this.context.languages),
