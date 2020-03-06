@@ -586,7 +586,7 @@ class ProgramEnrollmentsInspectorViewTests(SupportViewTestCase):
         expected_organization_serialized = '"orgKeys": {}'.format(json.dumps(self.org_key_list))
         assert response.status_code == 200
         assert expected_organization_serialized in content
-        assert '"learnerInfo": ""' in content
+        assert '"learnerInfo": {}' in content
 
     def _construct_user(self, username, org_key=None, external_user_key=None):
         """
@@ -682,7 +682,7 @@ class ProgramEnrollmentsInspectorViewTests(SupportViewTestCase):
         return expected_enrollments
 
     @patch_render
-    def test_post_username_well_connected_user(self, mocked_render):
+    def test_search_username_well_connected_user(self, mocked_render):
         created_user, expected_user_info = self._construct_user(
             'test_user_connected',
             self.org_key_list[0],
@@ -694,7 +694,7 @@ class ProgramEnrollmentsInspectorViewTests(SupportViewTestCase):
             self.external_user_key,
             created_user
         )
-        self.client.post(self.url, data={
+        self.client.get(self.url, data={
             'edx_user': created_user.username
         })
         expected_info = {
@@ -706,9 +706,9 @@ class ProgramEnrollmentsInspectorViewTests(SupportViewTestCase):
         assert expected_info == render_call_dict['learner_program_enrollments']
 
     @patch_render
-    def test_post_username_user_not_connected(self, mocked_render):
+    def test_search_username_user_not_connected(self, mocked_render):
         created_user, expected_user_info = self._construct_user('user_not_connected')
-        self.client.post(self.url, data={
+        self.client.get(self.url, data={
             'edx_user': created_user.email
         })
         expected_info = {
@@ -719,13 +719,13 @@ class ProgramEnrollmentsInspectorViewTests(SupportViewTestCase):
         assert expected_info == render_call_dict['learner_program_enrollments']
 
     @patch_render
-    def test_post_username_user_no_enrollment(self, mocked_render):
+    def test_search_username_user_no_enrollment(self, mocked_render):
         created_user, expected_user_info = self._construct_user(
             'user_connected',
             self.org_key_list[0],
             self.external_user_key
         )
-        self.client.post(self.url, data={
+        self.client.get(self.url, data={
             'edx_user': created_user.email
         })
         expected_info = {
@@ -736,7 +736,7 @@ class ProgramEnrollmentsInspectorViewTests(SupportViewTestCase):
         assert expected_info == render_call_dict['learner_program_enrollments']
 
     @patch_render
-    def test_post_username_user_no_course_enrollment(self, mocked_render):
+    def test_search_username_user_no_course_enrollment(self, mocked_render):
         created_user, expected_user_info = self._construct_user(
             'user_connected',
             self.org_key_list[0],
@@ -748,7 +748,7 @@ class ProgramEnrollmentsInspectorViewTests(SupportViewTestCase):
             self.external_user_key,
             created_user,
         )
-        self.client.post(self.url, data={
+        self.client.get(self.url, data={
             'edx_user': created_user.email
         })
         expected_info = {
@@ -760,16 +760,16 @@ class ProgramEnrollmentsInspectorViewTests(SupportViewTestCase):
         assert expected_info == render_call_dict['learner_program_enrollments']
 
     @patch_render
-    def test_post_username_user_not_connected_with_enrollments(self, mocked_render):
+    def test_search_username_user_not_connected_with_enrollments(self, mocked_render):
         created_user, expected_user_info = self._construct_user(
             'user_not_connected'
         )
-        expected_enrollments = self._construct_enrollments(
+        self._construct_enrollments(
             [self.program_uuid],
             [],
             self.external_user_key,
         )
-        self.client.post(self.url, data={
+        self.client.get(self.url, data={
             'edx_user': created_user.email
         })
         expected_info = {
