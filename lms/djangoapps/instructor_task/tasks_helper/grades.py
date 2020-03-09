@@ -69,6 +69,67 @@ def _flatten(iterable):
     return list(chain.from_iterable(iterable))
 
 
+class GradeReportBase(object):
+
+    def _handle_empty_generator(self, generator, default):
+        """
+        Handle empty generator.
+        Return default if the generator is emtpy, otherwise return all
+        its iterations (including the first which was used for validation).
+        """
+        empty_generator_sentinel = object()
+        first_iteration_output = next(generator, empty_generator_sentinel)
+        generator_is_empty = first_iteration_output == empty_generator_sentinel
+
+        if generator_is_empty:
+            yield default
+
+        else:
+            yield first_iteration_output
+            for element in generator:
+                yield element
+
+    def _batch_users(self, context):
+        """
+            Returns a generator of batches of users.
+        """
+
+        def grouper(iterable, chunk_size=100, fillvalue=None):
+            args = [iter(iterable)] * chunk_size
+            return zip_longest(*args, fillvalue=fillvalue)
+
+        def get_enrolled_learners_for_course(course_id, verified_only=False):
+            """
+            Get all the enrolled users in a course chunk by chunk.
+
+            This generator method fetches & loads the enrolled user objects on demand which in chunk
+            size defined. This method is a workaround to avoid out-of-memory errors.
+            """
+            filter_kwargs = {
+                'courseenrollment__course_id': course_id,
+            }
+            if verified_only:
+                filter_kwargs['courseenrollment__mode'] = CourseMode.VERIFIED
+
+            user_ids_list = get_user_model().objects.filter(**filter_kwargs).values_list('id', flat=True).order_by('id')
+            user_chunks = grouper(user_ids_list)
+            for user_ids in user_chunks:
+                user_ids = [user_id for user_id in user_ids if user_id is not None]
+                min_id = min(user_ids)
+                max_id = max(user_ids)
+                users = get_user_model().objects.filter(
+                    id__gte=min_id,
+                    id__lte=max_id,
+                    **filter_kwargs
+                ).select_related('profile')
+                yield users
+
+        course_id = context.course_id
+
+        report_for_verified_only = generate_grade_report_for_verified_only()
+        return get_enrolled_learners_for_course(course_id=course_id, verified_only=report_for_verified_only)
+
+
 class _CourseGradeReportContext(object):
     """
     Internal class that provides a common context to use for a single grade
@@ -178,10 +239,7 @@ class _ProblemGradeReportContext(object):
         self.action_name = action_name
         self.course_id = course_id
         self.task_progress = TaskProgress(self.action_name, total=None, start_time=time())
-
-    @lazy
-    def course(self):
-        return get_course_by_id(self.course_id)
+        self.course = get_course_by_id(self.course_id)
 
     def update_status(self, message):
         """
@@ -555,7 +613,7 @@ class CourseGradeReport(object):
             return success_rows, error_rows
 
 
-class ProblemGradeReport(object):
+class ProblemGradeReport(GradeReportBase):
 
     @classmethod
     def generate(cls, _xmodule_instance_args, _entry_id, course_id, _task_input, action_name):
@@ -566,8 +624,7 @@ class ProblemGradeReport(object):
             context = _ProblemGradeReportContext(_xmodule_instance_args, _entry_id, course_id, _task_input, action_name)
             return ProblemGradeReport()._generate(context)
 
-    @classmethod
-    def _generate(cls, context):
+    def _generate(self, context):
         """
         Generate a CSV containing all students' problem grades within a given
         `course_id`.
@@ -575,11 +632,11 @@ class ProblemGradeReport(object):
         context.update_status(u'Starting grades')
         course = get_course_by_id(context.course_id)
         header_row = OrderedDict([('id', 'Student ID'), ('email', 'Email'), ('username', 'Username')])
-        graded_scorable_blocks = cls._graded_scorable_blocks_to_header(course)
-        success_headers = cls._success_headers(header_row, graded_scorable_blocks)
-        error_headers = cls._error_headers(header_row)
+        graded_scorable_blocks = self._graded_scorable_blocks_to_header(course)
+        success_headers = self._success_headers(header_row, graded_scorable_blocks)
+        error_headers = self._error_headers(header_row)
 
-        generated_rows = cls._batched_rows(context, header_row, graded_scorable_blocks)
+        generated_rows = self._batched_rows(context, header_row, graded_scorable_blocks)
         success_rows, error_rows = zip(*generated_rows)
         success_rows = list(chain(*success_rows))
         error_rows = list(chain(*error_rows))
@@ -600,8 +657,7 @@ class ProblemGradeReport(object):
 
         return context.update_status(u'Completed grades')
 
-    @classmethod
-    def _success_headers(cls, header_row, graded_scorable_blocks):
+    def _success_headers(self, header_row, graded_scorable_blocks):
         """
         Returns headers for all gradable blocks including fixed headers
         for report.
@@ -613,18 +669,15 @@ class ProblemGradeReport(object):
             list(header_row.values()) + ['Enrollment Status', 'Grade'] + _flatten(list(graded_scorable_blocks.values()))
         ]
 
-    @classmethod
-    def _error_headers(cls, header_row):
+    def _error_headers(self, header_row):
         """
         Returns error headers for error report.
         :param header_row:
-        :param graded_scorable_blocks:
         :return:
         """
         return [list(header_row.values()) + ['error_msg']]
 
-    @classmethod
-    def _graded_scorable_blocks_to_header(cls, course):
+    def _graded_scorable_blocks_to_header(self, course):
         """
         Returns an OrderedDict that maps a scorable block's id to its
         headers in the final report.
@@ -647,8 +700,7 @@ class ProblemGradeReport(object):
                                                                     header_name + " (Possible)"]
         return scorable_blocks_map
 
-    @classmethod
-    def _rows_for_users(cls, context, users, header_row, graded_scorable_blocks):
+    def _rows_for_users(self, context, users, header_row, graded_scorable_blocks):
         """
         Returns a list of rows for the given users for this report.
         """
@@ -683,86 +735,12 @@ class ProblemGradeReport(object):
 
         return success_rows, error_rows
 
-    @classmethod
-    def _batched_rows(cls, context, header_row, graded_scorable_blocks):
+    def _batched_rows(self, context, header_row, graded_scorable_blocks):
         """
         A generator of batches of (success_rows, error_rows) for this report.
         """
-        for users in cls._batch_users(context):
-            users = [u for u in users if u is not None]
-            yield cls._rows_for_users(context, users, header_row, graded_scorable_blocks)
-
-    @classmethod
-    def _batch_users(cls, context):
-        """
-            Returns a generator of batches of users.
-        """
-
-        def grouper(iterable, chunk_size=100, fillvalue=None):
-            args = [iter(iterable)] * chunk_size
-            return zip_longest(*args, fillvalue=fillvalue)
-
-        def get_enrolled_learners_for_course(course_id, verified_only=False):
-            """
-            Get enrolled learners in a course.
-
-            Arguments:
-                course_id (CourseLocator): course_id to return enrollees for.
-                verified_only (boolean): is a boolean when True, returns only verified enrollees.
-            """
-            if optimize_get_learners_switch_enabled():
-                TASK_LOG.info(u'%s, Creating Course Grade with optimization', task_log_message)
-                return users_for_course_v2(course_id, verified_only=verified_only)
-
-            TASK_LOG.info(u'%s, Creating Course Grade without optimization', task_log_message)
-            return users_for_course(course_id, verified_only=verified_only)
-
-        def users_for_course(course_id, verified_only=False):
-            """
-            Get all the enrolled users in a course.
-
-            This method fetches & loads the enrolled user objects at once which may cause
-            out-of-memory errors in large courses. This method will be removed when
-            `OPTIMIZE_GET_LEARNERS_FOR_COURSE` waffle flag is removed.
-            """
-            users = CourseEnrollment.objects.users_enrolled_in(
-                course_id,
-                include_inactive=True,
-                verified_only=verified_only,
-            )
-            users = users.select_related('profile')
-            return grouper(users)
-
-        def users_for_course_v2(course_id, verified_only=False):
-            """
-            Get all the enrolled users in a course chunk by chunk.
-
-            This generator method fetches & loads the enrolled user objects on demand which in chunk
-            size defined. This method is a workaround to avoid out-of-memory errors.
-            """
-            filter_kwargs = {
-                'courseenrollment__course_id': course_id,
-            }
-            if verified_only:
-                filter_kwargs['courseenrollment__mode'] = CourseMode.VERIFIED
-
-            user_ids_list = get_user_model().objects.filter(**filter_kwargs).values_list('id', flat=True).order_by('id')
-            user_chunks = grouper(user_ids_list)
-            for user_ids in user_chunks:
-                user_ids = [user_id for user_id in user_ids if user_id is not None]
-                min_id = min(user_ids)
-                max_id = max(user_ids)
-                users = get_user_model().objects.filter(
-                    id__gte=min_id,
-                    id__lte=max_id,
-                    **filter_kwargs
-                ).select_related('profile')
-                yield users
-
-        course_id = context.course_id
-        task_log_message = u'{}, Task type: {}'.format(context.task_info_string, context.action_name)
-        report_for_verified_only = generate_grade_report_for_verified_only()
-        return get_enrolled_learners_for_course(course_id=course_id, verified_only=report_for_verified_only)
+        for users in self._handle_empty_generator(self._batch_users(context), default=[]):
+            yield self._rows_for_users(context, users, header_row, graded_scorable_blocks)
 
 
 class ProblemResponses(object):
