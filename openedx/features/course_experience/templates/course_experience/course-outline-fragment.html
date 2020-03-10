@@ -59,7 +59,7 @@ reset_deadlines_banner_displayed = False
                 scored = 'scored' if subsection.get('scored', False) else ''
                 graded = 'graded' if subsection.get('graded') else ''
                 %>
-                % if not subsection.get('complete', True) and subsection.get('due', timezone.now() + timedelta(1)) < timezone.now() and not reset_deadlines_banner_displayed:
+                % if subsection.get('due', timezone.now() + timedelta(1)) < timezone.now() and not subsection.get('complete', True) and not reset_deadlines_banner_displayed:
                     <% reset_deadlines_banner_displayed = True %>
                     <script type="text/javascript">
                         $('.reset-deadlines-banner').css('display', 'flex');
