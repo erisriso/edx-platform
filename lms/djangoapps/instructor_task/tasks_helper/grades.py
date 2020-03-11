@@ -2,7 +2,6 @@
 Functionality for generating grade reports.
 """
 
-
 import logging
 import re
 from collections import OrderedDict, defaultdict
@@ -91,7 +90,7 @@ class GradeReportBase(object):
 
     def _batch_users(self, context):
         """
-            Returns a generator of batches of users.
+        Returns a generator of batches of users.
         """
 
         def grouper(iterable, chunk_size=100, fillvalue=None):
@@ -129,6 +128,33 @@ class GradeReportBase(object):
         report_for_verified_only = generate_grade_report_for_verified_only()
         return get_enrolled_learners_for_course(course_id=course_id, verified_only=report_for_verified_only)
 
+    def _compile(self, context, batched_rows):
+        """
+        Compiles and returns the complete list of (success_rows, error_rows) for
+        the given batched_rows and context.
+        """
+        # partition and chain successes and errors
+        success_rows, error_rows = zip(*batched_rows)
+        success_rows = list(chain(*success_rows))
+        error_rows = list(chain(*error_rows))
+
+        # update metrics on task status
+        context.task_progress.succeeded = len(success_rows)
+        context.task_progress.failed = len(error_rows)
+        context.task_progress.attempted = context.task_progress.succeeded + context.task_progress.failed
+        context.task_progress.total = context.task_progress.attempted
+        return success_rows, error_rows
+
+    def _upload(self, context, success_headers, success_rows, error_headers, error_rows, report_type):
+        """
+        Creates and uploads a CSV for the given headers and rows.
+        """
+        date = datetime.now(UTC)
+        upload_csv_to_report_store([success_headers] + success_rows, report_type, context.course_id, date)
+        if len(error_rows) > 0:
+            error_rows = [error_headers] + error_rows
+            upload_csv_to_report_store(error_rows, report_type + '_err', context.course_id, date)
+
 
 class _CourseGradeReportContext(object):
     """
@@ -137,6 +163,7 @@ class _CourseGradeReportContext(object):
     elements of this context are serialized and parsed across process
     boundaries.
     """
+
     def __init__(self, _xmodule_instance_args, _entry_id, course_id, _task_input, action_name):
         self.task_info_string = (
             u'Task: {task_id}, '
@@ -224,12 +251,13 @@ class _ProblemGradeReportContext(object):
     elements of this context are serialized and parsed across process
     boundaries.
     """
+
     def __init__(self, _xmodule_instance_args, _entry_id, course_id, _task_input, action_name):
         self.task_info_string = (
-            u'Task: {task_id}, '
-            u'InstructorTask ID: {entry_id}, '
-            u'Course: {course_id}, '
-            u'Input: {task_input}'
+            'Task: {task_id}, '
+            'InstructorTask ID: {entry_id}, '
+            'Course: {course_id}, '
+            'Input: {task_input}'
         ).format(
             task_id=_xmodule_instance_args.get('task_id') if _xmodule_instance_args is not None else None,
             entry_id=_entry_id,
@@ -246,7 +274,7 @@ class _ProblemGradeReportContext(object):
         Updates the status on the celery task to the given message.
         Also logs the update.
         """
-        TASK_LOG.info(u'%s, Task type: %s, %s', self.task_info_string, self.action_name, message)
+        TASK_LOG.info('%s, Task type: %s, %s', self.task_info_string, self.action_name, message)
         return self.task_progress.update_task_state(extra_meta={'step': message})
 
 
@@ -396,6 +424,7 @@ class CourseGradeReport(object):
         """
         Returns a generator of batches of users.
         """
+
         def grouper(iterable, chunk_size=self.USER_BATCH_SIZE, fillvalue=None):
             args = [iter(iterable)] * chunk_size
             return zip_longest(*args, fillvalue=fillvalue)
@@ -629,7 +658,7 @@ class ProblemGradeReport(GradeReportBase):
         Generate a CSV containing all students' problem grades within a given
         `course_id`.
         """
-        context.update_status(u'Starting grades')
+        context.update_status('Starting grades')
         course = get_course_by_id(context.course_id)
         header_row = OrderedDict([('id', 'Student ID'), ('email', 'Email'), ('username', 'Username')])
         graded_scorable_blocks = self._graded_scorable_blocks_to_header(course)
@@ -637,45 +666,37 @@ class ProblemGradeReport(GradeReportBase):
         error_headers = self._error_headers(header_row)
 
         generated_rows = self._batched_rows(context, header_row, graded_scorable_blocks)
-        success_rows, error_rows = zip(*generated_rows)
-        success_rows = list(chain(*success_rows))
-        error_rows = list(chain(*error_rows))
+        success_rows, error_rows = self._compile(context, generated_rows)
+        self._upload(context, success_headers, success_rows, error_headers, error_rows, 'problem_grade_report')
 
-        # update metrics on task status
-        context.task_progress.succeeded = len(success_rows)
-        context.task_progress.failed = len(error_rows)
-        context.task_progress.attempted = context.task_progress.succeeded + context.task_progress.failed
-        context.task_progress.total = context.task_progress.attempted
-
-        context.update_status(u'Completed grades')
-
-        date = datetime.now(UTC)
-        upload_csv_to_report_store([success_headers] + success_rows, 'grade_report', context.course_id, date)
-        if len(error_rows) > 0:
-            error_rows = [error_headers] + error_rows
-            upload_csv_to_report_store(error_rows, 'grade_report_err', context.course_id, date)
-
-        return context.update_status(u'Completed grades')
+        return context.update_status('Completed grades')
 
     def _success_headers(self, header_row, graded_scorable_blocks):
         """
         Returns headers for all gradable blocks including fixed headers
         for report.
-        :param header_row:
-        :param graded_scorable_blocks:
-        :return:
+
+        Arguments:
+            header_row (dict): list of header values
+            graded_scorable_blocks (dict): dict of graded_scorable_blocks
+
+        Returns:
+            list: combined header and scorable blocks
         """
-        return [
-            list(header_row.values()) + ['Enrollment Status', 'Grade'] + _flatten(list(graded_scorable_blocks.values()))
-        ]
+        header_row = list(header_row.values()) + ['Enrollment Status', 'Grade']
+        return header_row + _flatten(list(graded_scorable_blocks.values()))
 
     def _error_headers(self, header_row):
         """
         Returns error headers for error report.
-        :param header_row:
-        :return:
+
+        Arguments:
+            header_row (dict): list of header values
+
+        Returns:
+            list: error headers
         """
-        return [list(header_row.values()) + ['error_msg']]
+        return list(header_row.values()) + ['error_msg']
 
     def _graded_scorable_blocks_to_header(self, course):
         """
@@ -688,8 +709,8 @@ class ProblemGradeReport(GradeReportBase):
             for subsection_index, subsection_info in enumerate(subsection_infos, start=1):
                 for scorable_block in subsection_info['scored_descendants']:
                     header_name = (
-                        u"{assignment_type} {subsection_index}: "
-                        u"{subsection_name} - {scorable_block_name}"
+                        "{assignment_type} {subsection_index}: "
+                        "{subsection_name} - {scorable_block_name}"
                     ).format(
                         scorable_block_name=scorable_block.display_name,
                         assignment_type=assignment_type_name,
@@ -712,7 +733,7 @@ class ProblemGradeReport(GradeReportBase):
                 err_msg = text_type(error)
                 # There was an error grading this student.
                 if not err_msg:
-                    err_msg = u'Unknown error'
+                    err_msg = 'Unknown error'
                 error_rows.append(student_fields + [err_msg])
                 continue
 
@@ -723,12 +744,12 @@ class ProblemGradeReport(GradeReportBase):
                 try:
                     problem_score = course_grade.problem_scores[block_location]
                 except KeyError:
-                    earned_possible_values.append([u'Not Available', u'Not Available'])
+                    earned_possible_values.append(['Not Available', 'Not Available'])
                 else:
                     if problem_score.first_attempted:
                         earned_possible_values.append([problem_score.earned, problem_score.possible])
                     else:
-                        earned_possible_values.append([u'Not Attempted', problem_score.possible])
+                        earned_possible_values.append(['Not Attempted', problem_score.possible])
 
             success_rows.append(
                 student_fields + [enrollment_status, course_grade.percent] + _flatten(earned_possible_values))
