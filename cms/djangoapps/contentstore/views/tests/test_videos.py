@@ -10,7 +10,6 @@ import re
 from contextlib import contextmanager
 from datetime import datetime
 from functools import wraps
-from six import StringIO
 
 import dateutil.parser
 import ddt
@@ -28,17 +27,18 @@ from edxval.api import (
     get_video_info
 )
 from mock import Mock, patch
+from six import StringIO
 from waffle.testutils import override_flag
 
 from contentstore.models import VideoUploadConfig
 from contentstore.tests.utils import CourseTestCase
 from contentstore.utils import reverse_course_url
 from contentstore.views.videos import (
-    AssumeRole,
     ENABLE_VIDEO_UPLOAD_PAGINATION,
     KEY_EXPIRATION_IN_SECONDS,
     VIDEO_IMAGE_UPLOAD_ENABLED,
     WAFFLE_SWITCHES,
+    AssumeRole,
     StatusDisplayStrings,
     TranscriptProvider,
     _get_default_video_image_url,
@@ -46,8 +46,8 @@ from contentstore.views.videos import (
 )
 from openedx.core.djangoapps.profile_images.tests.helpers import make_image_file
 from openedx.core.djangoapps.video_pipeline.config.waffle import (
-    ENABLE_DEVSTACK_VIDEO_UPLOADS,
     DEPRECATE_YOUTUBE,
+    ENABLE_DEVSTACK_VIDEO_UPLOADS,
     waffle_flags
 )
 from openedx.core.djangoapps.waffle_utils.models import WaffleFlagCourseOverrideModel
